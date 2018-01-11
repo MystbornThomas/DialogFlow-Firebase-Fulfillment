@@ -14,6 +14,35 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     return response.status(400).end('Invalid Webhook Request (expecting v1 or v2 webhook request)');
   }
 });
+
+/**
+ * Class to handle base action functionality
+ */
+class UnhandledAction {
+    
+    // Implement in child class
+    getGoogleResponse(action, parameters, inputContexts, requestSource) {
+        return "Not implemented";
+    }
+    
+    // Implement in child class
+    getNormalResponse(action, parameters, inputContexts, requestSource) {
+        return "Not implemented";
+    }
+}
+
+class InputWelcome extends UnhandledAction {
+    getNormalResponse(action, parameters, inputContexts, requestSource) {
+        return "Woohoo Firebase callback welcome is working!";
+    }
+}
+
+class InputUnknown extends UnhandledAction {
+    getNormalResponse(action, parameters, inputContexts, requestSource) {
+        return "Woohoo Firebase callback unknown is working!";
+    }
+}
+
 /*
 * Function to handle v1 webhook requests from Dialogflow
 */
@@ -24,76 +53,29 @@ function processV1Request (request, response) {
   let requestSource = (request.body.originalRequest) ? request.body.originalRequest.source : undefined;
   const googleAssistantRequest = 'google'; // Constant to identify Google Assistant requests
   const app = new DialogflowApp({request: request, response: response});
+  
   // Create handlers for Dialogflow actions as well as a 'default' handler
   const actionHandlers = {
     // The default welcome intent has been matched, welcome the user (https://dialogflow.com/docs/events#default_welcome_intent)
-    'input.welcome': () => {
-      // Use the Actions on Google lib to respond to Google requests; for other requests use JSON
-      if (requestSource === googleAssistantRequest) {
-        sendGoogleResponse('Hello, Welcome to my Dialogflow agent!'); // Send simple response to user
-      } else {
-        sendResponse('Hello, Welcome to my Dialogflow agent!'); // Send simple response to user
-      }
-    },
+    'input.welcome': new InputWelcome(),
     // The default fallback intent has been matched, try to recover (https://dialogflow.com/docs/intents#fallback_intents)
-    'input.unknown': () => {
-      // Use the Actions on Google lib to respond to Google requests; for other requests use JSON
-      if (requestSource === googleAssistantRequest) {
-        sendGoogleResponse('I\'m having trouble, can you try that again?'); // Send simple response to user
-      } else {
-        sendResponse('I\'m having trouble, can you try that again?'); // Send simple response to user
-      }
-    },
+    'input.unknown': new InputUnknown(),
     // Default handler for unknown or undefined actions
-    'default': () => {
-      // Use the Actions on Google lib to respond to Google requests; for other requests use JSON
-      if (requestSource === googleAssistantRequest) {
-        let responseToUser = {
-          //googleRichResponse: googleRichResponse, // Optional, uncomment to enable
-          //googleOutputContexts: ['weather', 2, { ['city']: 'rome' }], // Optional, uncomment to enable
-          speech: 'This message is from Dialogflow\'s Cloud Functions for Firebase editor!', // spoken response
-          text: 'This is from Dialogflow\'s Cloud Functions for Firebase editor! :-)' // displayed response
-        };
-        sendGoogleResponse(responseToUser);
-      } else {
-        let responseToUser = {
-          //data: richResponsesV1, // Optional, uncomment to enable
-          //outputContexts: [{'name': 'weather', 'lifespan': 2, 'parameters': {'city': 'Rome'}}], // Optional, uncomment to enable
-          speech: 'This message is from Dialogflow\'s Cloud Functions for Firebase editor!', // spoken response
-          text: 'This is from Dialogflow\'s Cloud Functions for Firebase editor! :-)' // displayed response
-        };
-        sendResponse(responseToUser);
-      }
-    }
+    'default': new UnhandledAction(),
   };
   // If undefined or unknown action use the default handler
   if (!actionHandlers[action]) {
     action = 'default';
   }
   // Run the proper handler function to handle the request from Dialogflow
-  actionHandlers[action]();
-    // Function to send correctly formatted Google Assistant responses to Dialogflow which are then sent to the user
-  function sendGoogleResponse (responseToUser) {
-    if (typeof responseToUser === 'string') {
-      app.ask(responseToUser); // Google Assistant response
-    } else {
-      // If speech or displayText is defined use it to respond
-      let googleResponse = app.buildRichResponse().addSimpleResponse({
-        speech: responseToUser.speech || responseToUser.displayText,
-        displayText: responseToUser.displayText || responseToUser.speech
-      });
-      // Optional: Overwrite previous response with rich response
-      if (responseToUser.googleRichResponse) {
-        googleResponse = responseToUser.googleRichResponse;
-      }
-      // Optional: add contexts (https://dialogflow.com/docs/contexts)
-      if (responseToUser.googleOutputContexts) {
-        app.setContext(...responseToUser.googleOutputContexts);
-      }
-      console.log('Response to Dialogflow (AoG): ' + JSON.stringify(googleResponse));
-      app.ask(googleResponse); // Send response to Dialogflow and Google Assistant
-    }
+  let actionHandlerInstance = actionHandlers[action];
+  
+  if (requestSource === googleAssistantRequest) {
+    sendGoogleResponse(actionHandlerInstance.getGoogleResponse(action, parameters, inputContexts, requestSource)); // Send response to user
+  } else {
+    sendResponse(actionHandlerInstance.getNormalResponse(action, parameters, inputContexts, requestSource)); // Send response to user
   }
+  
   // Function to send correctly formatted responses to Dialogflow which are then sent to the user
   function sendResponse (responseToUser) {
     // if the response is a string send it as a response to the user
@@ -114,6 +96,29 @@ function processV1Request (request, response) {
       responseJson.contextOut = responseToUser.outputContexts;
       console.log('Response to Dialogflow: ' + JSON.stringify(responseJson));
       response.json(responseJson); // Send response to Dialogflow
+    }
+  }
+  
+    // Function to send correctly formatted Google Assistant responses to Dialogflow which are then sent to the user
+  function sendGoogleResponse (responseToUser) {
+    if (typeof responseToUser === 'string') {
+      app.ask(responseToUser); // Google Assistant response
+    } else {
+      // If speech or displayText is defined use it to respond
+      let googleResponse = app.buildRichResponse().addSimpleResponse({
+        speech: responseToUser.speech || responseToUser.displayText,
+        displayText: responseToUser.displayText || responseToUser.speech
+      });
+      // Optional: Overwrite previous response with rich response
+      if (responseToUser.googleRichResponse) {
+        googleResponse = responseToUser.googleRichResponse;
+      }
+      // Optional: add contexts (https://dialogflow.com/docs/contexts)
+      if (responseToUser.googleOutputContexts) {
+        app.setContext(...responseToUser.googleOutputContexts);
+      }
+      console.log('Response to Dialogflow (AoG): ' + JSON.stringify(googleResponse));
+      app.ask(googleResponse); // Send response to Dialogflow and Google Assistant
     }
   }
 }
