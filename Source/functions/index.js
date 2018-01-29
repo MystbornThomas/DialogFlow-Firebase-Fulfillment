@@ -72,7 +72,7 @@ class InputFeedbackStore extends UnhandledAction {
             "timestamp" : this.timestamp
         });
 
-        return "Testfeedback-from deploy! " + this.userInputString + " " + this.timestamp;
+        return "IntroBot Testfeedback-from deploy! " + this.userInputString + " " + this.timestamp;
     }
 }
 
